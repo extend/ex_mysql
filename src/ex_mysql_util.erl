@@ -6,41 +6,29 @@
 %% API Function Exports
 %% ------------------------------------------------------------------
 
--export([quote/1]).
+-export([quote/2]).
 -export([read_init/1, read_result_set_header/1, read_field/1, read_param/1]).
 -export([read_row/2, read_value/2]).
 -export([scramble/3]).
 -export([ok/1, error/1]).
 -export([read_null_terminated_string/1, read_length/1, read_length_coded_binary/1, read_length_coded_string/1]).
 
--export([caps_flags/1]).
+-export([caps_flags/1, status_to_escape_mode/1]).
 
 %% ------------------------------------------------------------------
 %% API Function Definitions
 %% ------------------------------------------------------------------
 
-quote(Int) when is_integer(Int), Int >= -9223372036854775808, Int =< 18446744073709551615 ->
-  list_to_binary(integer_to_list(Int));
-quote({Integral, Decimal}) when is_integer(Integral), is_integer(Decimal), Decimal >= 0 ->
-  IntBin = list_to_binary(integer_to_list(Integral)),
-  DecBin = list_to_binary(integer_to_list(Decimal)),
-  <<$', IntBin/binary, $., DecBin/binary, $'>>;
-quote(Float) when is_float(Float) ->
-  list_to_binary(float_to_list(Float));
-quote(Bin) when is_binary(Bin) ->
-  quote_binary(Bin);
-quote(Atom) when is_atom(Atom) ->
-  quote_atom(Atom);
-quote(Str) when is_list(Str) ->
-  quote_binary(iolist_to_binary(Str));
-quote(Tuple) when is_tuple(Tuple) ->
-  quote_tuple(Tuple).
+quote(Value, no_backslash) ->
+  quote_val(Value, fun escape/1);
+quote(Value, backslash) ->
+  quote_val(Value, fun escape_bs/1).
 
 read_init(<<10/little, Rest/binary>>) ->
   {_ServVersion, Rest2} = read_null_terminated_string(Rest),
   <<_ThreadId:32/little, ScrambleBegin:8/binary, 0, Caps:16/little,
-    _Lang:8/little, _Status:16/little, 0:104, _Rest/binary>> = Rest2,
-  {Caps, ScrambleBegin}.
+    _Lang:8/little, Status:16/little, 0:104, _Rest/binary>> = Rest2,
+  {Caps, Status, ScrambleBegin}.
 
 scramble(Password = <<>>, _Message, _Secure) ->
   Password;
@@ -176,55 +164,50 @@ caps_flags(Set) ->
                      {transactions, ?CLIENT_TRANSACTIONS},
                      {secure_connection, ?CLIENT_SECURE_CONNECTION}]).
 
-integer_to_field_type(?FIELD_TYPE_DECIMAL) ->
-  decimal;
-integer_to_field_type(?FIELD_TYPE_TINY) ->
-  tiny;
-integer_to_field_type(?FIELD_TYPE_SHORT) ->
-  short;
-integer_to_field_type(?FIELD_TYPE_LONG) ->
-  long;
-integer_to_field_type(?FIELD_TYPE_FLOAT) ->
-  float;
-integer_to_field_type(?FIELD_TYPE_DOUBLE) ->
-  double;
-integer_to_field_type(?FIELD_TYPE_NULL) ->
-  null;
-integer_to_field_type(?FIELD_TYPE_DATE) ->
-  date;
-integer_to_field_type(?FIELD_TYPE_TIME) ->
-  time;
-integer_to_field_type(?FIELD_TYPE_DATETIME) ->
-  datetime;
-integer_to_field_type(?FIELD_TYPE_YEAR) ->
-  year;
-integer_to_field_type(?FIELD_TYPE_BLOB) ->
-  blob;
-integer_to_field_type(?FIELD_TYPE_VAR_STRING) ->
-  string;
-integer_to_field_type(?FIELD_TYPE_STRING) ->
-  string;
-integer_to_field_type(?FIELD_TYPE_GEOMETRY) ->
-  geometry.
+status_to_escape_mode(Int) when Int band ?SERVER_STATUS_NO_BACKSLASH_ESCAPES =:= 0 ->
+  no_backslash;
+status_to_escape_mode(_Int) ->
+  backslash.
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
-quote_atom(null) ->
-  <<"NULL">>;
-quote_atom(true) ->
-  <<"TRUE">>;
-quote_atom(false) ->
-  <<"FALSE">>;
-quote_atom(Atom) ->
-  quote_binary(atom_to_binary(Atom, latin1)).
+quote_val(Int, _EscapeFun) when is_integer(Int), Int >= -9223372036854775808, Int =< 18446744073709551615 ->
+  list_to_binary(integer_to_list(Int));
+quote_val({Integral, Decimal}, _EscapeFun) when is_integer(Integral), is_integer(Decimal), Decimal >= 0 ->
+  IntBin = list_to_binary(integer_to_list(Integral)),
+  DecBin = list_to_binary(integer_to_list(Decimal)),
+  <<$', IntBin/binary, $., DecBin/binary, $'>>;
+quote_val(Float, _EscapeFun) when is_float(Float) ->
+  list_to_binary(float_to_list(Float));
+quote_val(Bin, EscapeFun) when is_binary(Bin) ->
+  quote_binary(Bin, EscapeFun);
+quote_val(Atom, EscapeFun) when is_atom(Atom) ->
+  quote_atom(Atom, EscapeFun);
+quote_val(List, EscapeFun) when is_list(List) ->
+  quote_binary(iolist_to_binary(List), EscapeFun);
+quote_val(Tuple, _EscapeFun) when is_tuple(Tuple) ->
+  quote_tuple(Tuple).
 
-quote_binary(Bin) ->
-  <<$', (escape(Bin))/binary, $'>>.
+quote_atom(null, _EscapeFun) ->
+  <<"NULL">>;
+quote_atom(true, _EscapeFun) ->
+  <<"TRUE">>;
+quote_atom(false, _EscapeFun) ->
+  <<"FALSE">>;
+quote_atom(Atom, EscapeFun) ->
+  quote_binary(atom_to_binary(Atom, latin1), EscapeFun).
+
+quote_binary(Bin, EscapeFun) ->
+  <<$', (EscapeFun(Bin))/binary, $'>>.
 
 escape(Bin) ->
-  binary:replace(Bin, <<"'">>, <<"''">>).
+  binary:replace(Bin, <<$'>>, <<"''">>).
+
+escape_bs(Bin) ->
+  Bin2 = binary:replace(Bin, [<<$\\>>, <<$'>>], <<$\\>>, [{insert_replaced, 1}]),
+  binary:replace(Bin2, <<0>>, <<"\\0">>).
 
 quote_tuple({date, Date}) ->
   case date_to_binary(Date) of
@@ -380,3 +363,34 @@ binary_to_integer(<<Char, Rest/binary>>, Int) when Char >= $0, Char =< $9 ->
   binary_to_integer(Rest, Int * 10 + Char - $0);
 binary_to_integer(<<>>, Int) ->
   Int.
+
+integer_to_field_type(?FIELD_TYPE_DECIMAL) ->
+  decimal;
+integer_to_field_type(?FIELD_TYPE_TINY) ->
+  tiny;
+integer_to_field_type(?FIELD_TYPE_SHORT) ->
+  short;
+integer_to_field_type(?FIELD_TYPE_LONG) ->
+  long;
+integer_to_field_type(?FIELD_TYPE_FLOAT) ->
+  float;
+integer_to_field_type(?FIELD_TYPE_DOUBLE) ->
+  double;
+integer_to_field_type(?FIELD_TYPE_NULL) ->
+  null;
+integer_to_field_type(?FIELD_TYPE_DATE) ->
+  date;
+integer_to_field_type(?FIELD_TYPE_TIME) ->
+  time;
+integer_to_field_type(?FIELD_TYPE_DATETIME) ->
+  datetime;
+integer_to_field_type(?FIELD_TYPE_YEAR) ->
+  year;
+integer_to_field_type(?FIELD_TYPE_BLOB) ->
+  blob;
+integer_to_field_type(?FIELD_TYPE_VAR_STRING) ->
+  string;
+integer_to_field_type(?FIELD_TYPE_STRING) ->
+  string;
+integer_to_field_type(?FIELD_TYPE_GEOMETRY) ->
+  geometry.

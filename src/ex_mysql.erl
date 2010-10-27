@@ -3,7 +3,7 @@
 -include("ex_mysql.hrl").
 -include("ex_mysql_com.hrl").
 
--record(state, {socket, supports, table}).
+-record(state, {socket, escape, supports, table}).
 
 %% ------------------------------------------------------------------
 %% API Function Exports
@@ -157,9 +157,10 @@ connect_opts(Args) ->
 
 do_handshake(Socket, User, #connect_opts{passwd = Passwd, db = Db}) ->
   {ok, {Number, Bytes}} = ex_mysql_tcp:recv(Socket),
-  {Caps, Message} = ex_mysql_util:read_init(Bytes),
+  {Caps, Status, Message} = ex_mysql_util:read_init(Bytes),
   ok = send_auth(Socket, Number + 1, User, Message, Passwd),
-  State = #state{socket = Socket, supports = Caps},
+  EscapeMode = ex_mysql_util:status_to_escape_mode(Status),
+  State = #state{socket = Socket, escape = EscapeMode, supports = Caps},
   case Db of
     undefined -> {ok, State};
     _ ->
