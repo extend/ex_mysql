@@ -81,7 +81,7 @@ init({Address, Port, User, Options}) ->
 handle_call({use, Database}, _From, State) ->
   case do_use(Database, State) of
     Error = {error, _Reason} -> {reply, Error, State};
-    Ok -> {reply, Ok, State} end;
+    ok -> {reply, ok, State} end;
 handle_call({q, Statement}, From, State = #state{socket = Socket}) ->
   {ok, {_Number, Bytes}} = ex_mysql_tcp:send_recv(Socket, <<?COM_QUERY, Statement/binary>>),
   case Bytes of
@@ -165,8 +165,8 @@ do_handshake(Socket, User, #connect_opts{passwd = Passwd, db = Db}) ->
     undefined -> {ok, State};
     _ ->
       case do_use(Db, State) of
-        Error = {error, _Reason} -> {stop, Error};
-        _Ok -> {ok, State} end end.
+        {error, Reason} -> {stop, Reason};
+        ok -> {ok, State} end end.
 
 send_auth(Socket, Number, User, Message, Passwd) ->
   Bytes = <<?CLIENT_LONG_PASSWORD:16/little, (1 bsl 24):24/little, User/binary, 0,
@@ -176,7 +176,9 @@ send_auth(Socket, Number, User, Message, Passwd) ->
 
 do_use(Database, #state{socket = Socket}) ->
   {ok, {_Number, Bytes}} = ex_mysql_tcp:send_recv(Socket, <<?COM_INIT_DB, Database/binary>>),
-  ex_mysql_util:ok(Bytes).
+  case Bytes of
+    <<0:24>> -> ok;
+    _ -> ex_mysql_util:error(Bytes) end.
 
 cmd(State = #state{socket = Socket}, Packet, ReplyFun) ->
   {ok, {_Number, Bytes}} = ex_mysql_tcp:send_recv(Socket, Packet),
