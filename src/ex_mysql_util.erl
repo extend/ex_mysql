@@ -10,7 +10,7 @@
 -export([read_init/1, read_result_set_header/1, read_field/1, read_param/1]).
 -export([read_row/2, read_value/2]).
 -export([scramble/3]).
--export([ok/1, error/1]).
+-export([ok/1, error/1, read_ok/1]).
 -export([read_null_terminated_string/1, read_length/1, read_length_coded_binary/1, read_length_coded_string/1]).
 
 -export([caps_flags/1, status_to_escape_mode/1]).
@@ -49,20 +49,25 @@ scramble(Password, Message, true) ->
   Ctx3 = crypto:sha_update(Ctx2, crypto:sha(Stage1Hash)),
   crypto:exor(crypto:sha_final(Ctx3), Stage1Hash).
 
-ok(<<0, Rest/binary>>) ->
-  {_Rows, Rest2} = read_length(Rest),
-  {_InsertId, Rest3} = read_length(Rest2),
-  case Rest3 of
-    <<_ServerStatus, Message/binary>> -> {ok, binary_to_list(Message)};
-    <<>> -> ok end;
 ok(Bytes) ->
-  error(Bytes).
+  case read_ok(Bytes) of
+    Error = {error, _Reason} -> Error;
+    {Ok, _ServerStatus} -> Ok end.
 
 error(<<255, Errno:16/little, Rest/binary>>) ->
   Message = case binary:last(Rest) == $\0 of
     true -> binary_part(Rest, {0, byte_size(Rest) - 1});
     false -> Rest end,
   {error, {mysql, Errno, binary_to_list(Message)}}.
+
+read_ok(<<0, Rest/binary>>) ->
+  {Rows, Rest2} = read_length(Rest),
+  {InsertId, Rest3} = read_length(Rest2),
+  <<ServerStatus, Message/binary>> = Rest3,
+  erlang:display(ServerStatus),
+  {#ex_mysql_ok{rows = Rows, insert_id = InsertId, message = binary_to_list(Message)}, ServerStatus};
+read_ok(Bytes) ->
+  error(Bytes).
 
 read_result_set_header(Bytes) ->
   {FieldCount, _Rest} = read_length(Bytes),
