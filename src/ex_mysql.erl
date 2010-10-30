@@ -15,7 +15,7 @@
 -export([stats/1, processes/1, kill/2, debug/1, ping/1]).
 -export([prepare/2, stmt_info/2]).
 
--export([supports/1]).
+-export([quote/2, supports/1]).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Exports
@@ -66,6 +66,9 @@ prepare(Server, Statement) ->
 stmt_info(Server, StmtId) ->
   gen_server:call(Server, {stmt_info, StmtId}, infinity).
 
+quote(Server, Value) ->
+  gen_server:call(Server, {quote, Value}, infinity).
+
 supports(Server) ->
   gen_server:call(Server, supports, infinity).
 
@@ -83,9 +86,14 @@ handle_call({use, Database}, _From, State) ->
     Error = {error, _Reason} -> {reply, Error, State};
     ok -> {reply, ok, State} end;
 handle_call({q, Statement}, From, State = #state{socket = Socket}) ->
-  {ok, {_Number, Bytes}} = ex_mysql_tcp:send_recv(Socket, <<?COM_QUERY, Statement/binary>>),
-  case Bytes of
-    <<First, _Rest/binary>> when First =:= 0; First =:= 255 -> {reply, ex_mysql_util:ok(Bytes), State};
+  {ok, {_Number, Bytes = <<First, _Rest/binary>>}} = ex_mysql_tcp:send_recv(Socket, <<?COM_QUERY, Statement/binary>>),
+  erlang:display(First),
+  case First of
+    0 ->
+      {Ok, Status} = ex_mysql_util:read_ok(Bytes),
+      EscapeMode = ex_mysql_util:status_to_escape_mode(Status),
+      {reply, Ok, State#state{escape = EscapeMode}};
+    255 -> {reply, ex_mysql_util:error(Bytes), State};
     _ -> handle_result(Bytes, From, State) end;
 handle_call({fields, Table}, _From, State = #state{socket = Socket}) ->
   {ok, {_Number, Bytes}} = ex_mysql_tcp:send_recv(Socket, <<?COM_FIELD_LIST, Table/binary>>),
@@ -125,6 +133,8 @@ handle_call({stmt_info, StmtId}, _From, State = #state{table = Table}) ->
   case ets:lookup(Table, Key) of
     [{Key, Stmt}] -> {reply, {ok, Stmt}, State};
     [] -> {reply, {error, invalid_stmt_id}, State} end;
+handle_call({quote, Value}, _From, State = #state{escape = EscapeMode}) ->
+  {reply, ex_mysql_util:quote(Value, EscapeMode), State};
 handle_call(supports, _From, State = #state{supports = Caps}) ->
   {reply, ex_mysql_util:caps_list(Caps), State};
 handle_call(Request, _From, State) ->
@@ -172,7 +182,9 @@ send_auth(Socket, Number, User, Message, Passwd) ->
   Bytes = <<?CLIENT_LONG_PASSWORD:16/little, (1 bsl 24):24/little, User/binary, 0,
             (ex_mysql_util:scramble(Passwd, Message, false))/binary, 0>>,
   {ok, {_Number2, Bytes2}} = ex_mysql_tcp:send_recv(Socket, {Number, Bytes}),
-  ex_mysql_util:ok(Bytes2).
+  case Bytes2 of
+    <<0:24>> -> ok;
+    _ -> ex_mysql_util:error(Bytes2) end.
 
 do_use(Database, #state{socket = Socket}) ->
   {ok, {_Number, Bytes}} = ex_mysql_tcp:send_recv(Socket, <<?COM_INIT_DB, Database/binary>>),
