@@ -164,7 +164,7 @@ caps_flags(Set) ->
                      {transactions, ?CLIENT_TRANSACTIONS},
                      {secure_connection, ?CLIENT_SECURE_CONNECTION}]).
 
-status_to_escape_mode(Int) when Int band ?SERVER_STATUS_NO_BACKSLASH_ESCAPES =:= 0 ->
+status_to_escape_mode(Int) when Int band ?SERVER_STATUS_NO_BACKSLASH_ESCAPES =/= 0 ->
   no_backslash;
 status_to_escape_mode(_Int) ->
   backslash.
