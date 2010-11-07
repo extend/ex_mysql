@@ -1,22 +1,17 @@
+%%% @private
 -module(ex_mysql_tcp).
 -behaviour(gen_server).
 
-%% ------------------------------------------------------------------
-%% API Function Exports
-%% ------------------------------------------------------------------
+-export([start_link/1,
+         recv/1,
+         send_recv/2]).
 
--export([start_link/1]).
--export([recv/1, send_recv/2]).
-
-%% ------------------------------------------------------------------
-%% gen_server Function Exports
-%% ------------------------------------------------------------------
-
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
-
-%% ------------------------------------------------------------------
-%% API Function Definitions
-%% ------------------------------------------------------------------
+-export([init/1,
+         handle_call/3,
+         handle_cast/2,
+         handle_info/2,
+         terminate/2,
+         code_change/3]).
 
 start_link(Socket) ->
   gen_server:start_link(?MODULE, Socket, [{timeout, infinity}]).
@@ -27,9 +22,6 @@ recv(Server) ->
 send_recv(Server, Packet) ->
   gen_server:call(Server, {send, Packet}, infinity).
 
-%% ------------------------------------------------------------------
-%% gen_server Function Definitions
-%% ------------------------------------------------------------------
 
 init(Socket) ->
   {ok, Socket}.
@@ -54,9 +46,6 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-%% ------------------------------------------------------------------
-%% Internal Function Definitions
-%% ------------------------------------------------------------------
 
 handle_recv(Socket) ->
   Ok = {ok, _Packet} = recv_packet(Socket),
