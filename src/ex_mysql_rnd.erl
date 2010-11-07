@@ -20,7 +20,7 @@ next({Seed1, Seed2}) ->
   {NewSeed1 / float(Mod), {NewSeed1, NewSeed2}}.
 
 %% @spec next(context(), integer()) -> {[float()], context()}
-%% @doc Return the nth next pseudo-random numbers from a given generator.
+%% @doc Return the `N' next pseudo-random numbers from a given generator.
 next(Context, N) when N >= 0 ->
   next(Context, N, []).
 
