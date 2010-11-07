@@ -1,4 +1,4 @@
-%%% @type context() = {integer(), integer()}.
+%%% @type context().
 
 -module(ex_mysql_rnd).
 
