@@ -2,34 +2,40 @@
 -include("ex_mysql.hrl").
 -include("ex_mysql_com.hrl").
 
-%% ------------------------------------------------------------------
-%% API Function Exports
-%% ------------------------------------------------------------------
+-export([quote/2,
+         read_init/1,
+         read_result_set_header/1,
+         read_field/1,
+         read_row/2,
+         scramble/3,
+         ok/1,
+         error/1,
+         read_ok/1,
+         caps_flags/1,
+         status_to_escape_mode/1]).
 
--export([quote/2]).
--export([read_init/1, read_result_set_header/1, read_field/1, read_param/1]).
--export([read_row/2, read_value/2]).
--export([scramble/3]).
--export([ok/1, error/1, read_ok/1]).
--export([read_null_terminated_string/1, read_length/1, read_length_coded_binary/1, read_length_coded_string/1]).
+%%% @type escape_mode() = no_backslash | backslash.
+%%% @type field_type() = decimal | tiny | short | long | float | double | null
+%%%                    | date | time | datetime | year | blob | string
+%%%                    | geometry.
 
--export([caps_flags/1, status_to_escape_mode/1]).
-
-%% ------------------------------------------------------------------
-%% API Function Definitions
-%% ------------------------------------------------------------------
-
+%% @spec quote(term(), EscapeMode::escape_mode()) -> binary() | {error, term()}
+%% @doc Escape and quote a given value.
 quote(Value, no_backslash) ->
   quote_val(Value, fun escape/1);
 quote(Value, backslash) ->
   quote_val(Value, fun escape_bs/1).
 
+%% @spec read_init(Packet::binary()) -> {Caps::integer(), Status::integer(), Scramble::binary()}
+%% @doc Read a handshake initialisation packet.
 read_init(<<10/little, Rest/binary>>) ->
   {_ServVersion, Rest2} = read_null_terminated_string(Rest),
   <<_ThreadId:32/little, ScrambleBegin:8/binary, 0, Caps:16/little,
     _Lang:8/little, Status:16/little, 0:104, _Rest/binary>> = Rest2,
   {Caps, Status, ScrambleBegin}.
 
+%% @spec scramble(Password::binary(), Message::binary(), IsSecure::bool()) -> binary()
+%% @doc Scramble a given password with a given message.
 scramble(Password = <<>>, _Message, _Secure) ->
   Password;
 scramble(Password, Message, false) ->
@@ -49,17 +55,23 @@ scramble(Password, Message, true) ->
   Ctx3 = crypto:sha_update(Ctx2, crypto:sha(Stage1Hash)),
   crypto:exor(crypto:sha_final(Ctx3), Stage1Hash).
 
+%% @spec ok(binary()) -> #ex_mysql_ok{} | {error, term()}
+%% @doc Read an ok packet and return the ok record from it.
 ok(Bytes) ->
   case read_ok(Bytes) of
     Error = {error, _Reason} -> Error;
     {Ok, _ServerStatus} -> Ok end.
 
+%% @spec error(Bytes::binary()) -> {error, term()}
+%% @doc Read an error packet.
 error(<<255, Errno:16/little, Rest/binary>>) ->
   Message = case binary:last(Rest) == $\0 of
     true -> binary_part(Rest, {0, byte_size(Rest) - 1});
     false -> Rest end,
   {error, {mysql, Errno, binary_to_list(Message)}}.
 
+%% @spec read_ok(Bytes::binary()) -> {#ex_mysql_ok{}, Status::integer()} | {error, term()}
+%% @doc Read an ok packet.
 read_ok(<<0, Rest/binary>>) ->
   {Rows, Rest2} = read_length(Rest),
   {InsertId, Rest3} = read_length(Rest2),
@@ -69,10 +81,14 @@ read_ok(<<0, Rest/binary>>) ->
 read_ok(Bytes) ->
   error(Bytes).
 
+%% @spec read_result_set_header(binary()) -> FieldCount::integer()
+%% @doc Read a result set header packet.
 read_result_set_header(Bytes) ->
   {FieldCount, _Rest} = read_length(Bytes),
   FieldCount.
 
+%% @spec read_field(binary()) -> #ex_mysql_field{}
+%% @doc Read a field packet.
 read_field(Bytes) ->
   {Table, Rest} = read_length_coded_string(Bytes),
   {Name, Rest2} = read_length_coded_string(Rest),
@@ -84,11 +100,8 @@ read_field(Bytes) ->
            Flavor -> Flavor end,
   #ex_mysql_field{table = Table, name = Name, type = Type, length = Length}.
 
-read_param(Bytes) ->
-  {TypeInt, Rest} = read_length_coded_integer(Bytes),
-  {_Flags, _Rest2} = read_length_coded_integer(Rest),
-  integer_to_field_type(TypeInt).
-
+%% @spec read_row(binary(), [#ex_mysql_field{}]) -> [row_value()]
+%% @doc Read a given row packet with a given list of fields.
 read_row(Row, Fields) ->
   read_row(Row, Fields, []).
 
@@ -98,7 +111,31 @@ read_row(Bytes, [#ex_mysql_field{type = Type} | Fields], Values) ->
   {Value, NewRest} = read_column_value(Bytes),
   read_row(NewRest, Fields, [read_value(Value, Type) | Values]).
 
-read_value(Value, _Field) when Value =:= null ->
+%% @spec caps_flags(integer()) -> [ex_mysql:capability()]
+%% @doc Return a list of capabilities from a given capabilities set.
+caps_flags(Set) ->
+  set_to_flags(Set, [{found_rows, ?CLIENT_FOUND_ROWS},
+                     {long_flag, ?CLIENT_LONG_FLAG},
+                     {connect_with_db, ?CLIENT_CONNECT_WITH_DB},
+                     {no_schema, ?CLIENT_NO_SCHEMA},
+                     {compress, ?CLIENT_COMPRESS},
+                     {local_files, ?CLIENT_LOCAL_FILES},
+                     {ignore_space, ?CLIENT_IGNORE_SPACE},
+                     {protocol_41, ?CLIENT_PROTOCOL_41 bor ?CLIENT_RESERVED},
+                     {interactive, ?CLIENT_INTERACTIVE},
+                     {ssl, ?CLIENT_SSL},
+                     {transactions, ?CLIENT_TRANSACTIONS},
+                     {secure_connection, ?CLIENT_SECURE_CONNECTION}]).
+
+%% @spec status_to_escape_mode(Status::integer()) -> escape_mode()
+%% @doc Return the escape mode from a given server status.
+status_to_escape_mode(Status) when Status band ?SERVER_STATUS_NO_BACKSLASH_ESCAPES =/= 0 ->
+  no_backslash;
+status_to_escape_mode(_Status) ->
+  backslash.
+
+
+read_value(Value, _T) when Value =:= null ->
   null;
 read_value(Value, T) when T =:= tiny; T =:= short; T =:= long ->
   binary_to_integer(Value);
@@ -154,29 +191,6 @@ read_length_coded_integer(Bytes) ->
 read_length_coded_string(Bytes) ->
     {Bin, Rest} = read_length_coded_binary(Bytes),
     {binary_to_list(Bin), Rest}.
-
-caps_flags(Set) ->
-  set_to_flags(Set, [{found_rows, ?CLIENT_FOUND_ROWS},
-                     {long_flag, ?CLIENT_LONG_FLAG},
-                     {connect_with_db, ?CLIENT_CONNECT_WITH_DB},
-                     {no_schema, ?CLIENT_NO_SCHEMA},
-                     {compress, ?CLIENT_COMPRESS},
-                     {local_files, ?CLIENT_LOCAL_FILES},
-                     {ignore_space, ?CLIENT_IGNORE_SPACE},
-                     {protocol_41, ?CLIENT_PROTOCOL_41 bor ?CLIENT_RESERVED},
-                     {interactive, ?CLIENT_INTERACTIVE},
-                     {ssl, ?CLIENT_SSL},
-                     {transactions, ?CLIENT_TRANSACTIONS},
-                     {secure_connection, ?CLIENT_SECURE_CONNECTION}]).
-
-status_to_escape_mode(Int) when Int band ?SERVER_STATUS_NO_BACKSLASH_ESCAPES =/= 0 ->
-  no_backslash;
-status_to_escape_mode(_Int) ->
-  backslash.
-
-%% ------------------------------------------------------------------
-%% Internal Function Definitions
-%% ------------------------------------------------------------------
 
 quote_val(Int, _EscapeFun) when is_integer(Int), Int >= -9223372036854775808, Int =< 18446744073709551615 ->
   list_to_binary(integer_to_list(Int));
