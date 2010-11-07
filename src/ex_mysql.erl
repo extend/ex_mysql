@@ -29,9 +29,11 @@
 
 %%% @type str() = iodata() | atom().
 %%% @type address() = string() | atom() | ip_address().
-%%% @type portnum() = integer().
-%%% @type options() = [option()].
 %%% @type option() = {password, str()} | {database, str()}.
+%%% @type capability() = found_rows | long_flag | connect_with_db | no_schema
+%%%                    | compress | local_files | ignore_space | protocol_v41
+%%%                    | interactive | ssl | transactions | secure_connection.
+%%% @type stmt_id() = integer().
 
 %% @equiv start(User, [])
 start(User) ->
@@ -45,7 +47,7 @@ start(User, Options) ->
 start(Address, User, Options) ->
   start(Address, 3306, User, Options).
 
-%% @spec start(adress(), portnum(), str(), options()) -> {ok, pid()} | {error, term()}
+%% @spec start(adress(), integer(), str(), [option()]) -> {ok, pid()} | {error, term()}
 %% @doc Attempt to establish a connection with a given MySQL server.
 start(Address, Port, User, Options) ->
   gen_server:start(?MODULE, {Address, Port, User, Options}, [{timeout, infinity}]).
@@ -85,16 +87,22 @@ kill(Pid, ProcessId) ->
   gen_server:call(Pid, {kill, ProcessId}, infinity).
 
 %% @spec debug(pid()) -> string() | {error, term()}
+%% @doc Ask the MySQL server to dump some debug information.
 debug(Pid) ->
   gen_server:call(Pid, debug, infinity).
 
 %% @spec ping(pid()) -> ok | {error, term()}
+%% @doc Check whether or not the connection to the server is working.
 ping(Pid) ->
   gen_server:call(Pid, ping, infinity).
 
+%% @spec prepare(pid(), iodata()) -> {ok, stmt_id()} | {error, term()}
+%% @doc Prepare a given statement.
 prepare(Pid, Statement) ->
   gen_server:call(Pid, {prepare, Statement}, infinity).
 
+%% @spec stmt_info(pid(), stmt_id()) -> {ok, #ex_mysql_stmt{}} | {error, invalid_stmt_id}
+%% @doc Return informations about a given statement id.
 stmt_info(Pid, StmtId) ->
   gen_server:call(Pid, {stmt_info, StmtId}, infinity).
 
@@ -103,6 +111,8 @@ stmt_info(Pid, StmtId) ->
 quote(Pid, Value) ->
   gen_server:call(Pid, {quote, Value}, infinity).
 
+%% @spec supports(Pid) -> [capability()]
+%% @doc Return the capabilities of the MySQL server.
 supports(Pid) ->
   gen_server:call(Pid, supports, infinity).
 
