@@ -1,3 +1,5 @@
+%%% @reference [http://forge.mysql.com/wiki/MySQL_Internals_ClientServer_Protocol]
+
 -module(ex_mysql_util).
 -include("ex_mysql.hrl").
 -include("ex_mysql_com.hrl").
