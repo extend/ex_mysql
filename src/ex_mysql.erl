@@ -3,84 +3,116 @@
 -include("ex_mysql.hrl").
 -include("ex_mysql_com.hrl").
 
+-export([start/1, start/2, start/3, start/4,
+         use/2,
+         q/2,
+         fields/2,
+         stats/1,
+         processes/1,
+         kill/2,
+         debug/1,
+         ping/1,
+         prepare/2,
+         stmt_info/2,
+         quote/2,
+         supports/1]).
+
+-export([init/1,
+         handle_call/3,
+         handle_cast/2,
+         handle_info/2,
+         terminate/2,
+         code_change/3]).
+
+-record(connect_opts, {passwd = <<>>, db}).
 -record(state, {socket, escape, supports, table}).
 
-%% ------------------------------------------------------------------
-%% API Function Exports
-%% ------------------------------------------------------------------
+%%% @type str() = iodata() | atom().
+%%% @type address() = string() | atom() | ip_address().
+%%% @type portnum() = integer().
+%%% @type options() = [option()].
+%%% @type option() = {password, str()} | {database, str()}.
 
--export([start/1, start/2, start/3, start/4]).
-
--export([use/2, q/2, fields/2]).
--export([stats/1, processes/1, kill/2, debug/1, ping/1]).
--export([prepare/2, stmt_info/2]).
-
--export([quote/2, supports/1]).
-
-%% ------------------------------------------------------------------
-%% gen_server Function Exports
-%% ------------------------------------------------------------------
-
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
-
-%% ------------------------------------------------------------------
-%% API Function Definitions
-%% ------------------------------------------------------------------
-
+%% @equiv start(User, [])
 start(User) ->
   start(User, []).
+
+%% @equiv start(localhost, User, Options)
 start(User, Options) ->
   start(localhost, User, Options).
+
+%% @equiv start(Address, 3306, User, Options)
 start(Address, User, Options) ->
   start(Address, 3306, User, Options).
+
+%% @spec start(adress(), portnum(), str(), options()) -> {ok, pid()} | {error, term()}
+%% @doc Attempt to establish a connection with a given MySQL server.
 start(Address, Port, User, Options) ->
   gen_server:start(?MODULE, {Address, Port, User, Options}, [{timeout, infinity}]).
 
-use(Server, Database) ->
-  gen_server:call(Server, {use, Database}, infinity).
+%% @spec use(pid(), str()) -> ok | {error, term()}
+%% @doc Tell MySQL to use a given database as the default for subsequent actions.
+use(Pid, Database) ->
+  gen_server:call(Pid, {use, Database}, infinity).
 
-q(Server, Statement) ->
-  gen_server:call(Server, {q, Statement}, infinity).
+%% @spec q(pid(), str()) -> {ok, status()} | {res, pid()} | {error, term()}
+%% @doc Execute a given statement.
+q(Pid, Statement) ->
+  gen_server:call(Pid, {q, Statement}, infinity).
 
-fields(Server, Table) ->
-  gen_server:call(Server, {fields, Table}, infinity).
+%% @spec fields(pid(), str()) -> [#ex_mysql_field{}] | {error, term()}
+%% @doc List fields of a given table.
+fields(Pid, Table) ->
+  gen_server:call(Pid, {fields, Table}, infinity).
 
-stats(Server) ->
-  gen_server:call(Server, stats, infinity).
+%% @spec stats(pid()) -> string() | {error, term()}
+%% @doc Return a string containing information about the server.
+%%      This includes uptime in seconds and the number of running threads,
+%%      questions, reloads, and open tables.
+stats(Pid) ->
+  gen_server:call(Pid, stats, infinity).
 
-processes(Server) ->
-  gen_server:call(Server, processes, infinity).
+%% @spec processes(pid()) -> {res, pid()} | {error, term()}
+%% @doc Return a result set describing the current server threads.
+%%      This is the same kind of information as that reported by a
+%%      "SHOW PROCESSLIST" query.
+processes(Pid) ->
+  gen_server:call(Pid, processes, infinity).
 
-kill(Server, ProcessId) ->
-  gen_server:call(Server, {kill, ProcessId}, infinity).
+%% @spec kill(pid(), pos_integer()) -> ok | {error, term()}
+%% @doc Kill a given process on the MySQL server.
+kill(Pid, ProcessId) ->
+  gen_server:call(Pid, {kill, ProcessId}, infinity).
 
-debug(Server) ->
-  gen_server:call(Server, debug, infinity).
+%% @spec debug(pid()) -> string() | {error, term()}
+debug(Pid) ->
+  gen_server:call(Pid, debug, infinity).
 
-ping(Server) ->
-  gen_server:call(Server, ping, infinity).
+%% @spec ping(pid()) -> ok | {error, term()}
+ping(Pid) ->
+  gen_server:call(Pid, ping, infinity).
 
-prepare(Server, Statement) ->
-  gen_server:call(Server, {prepare, Statement}, infinity).
+prepare(Pid, Statement) ->
+  gen_server:call(Pid, {prepare, Statement}, infinity).
 
-stmt_info(Server, StmtId) ->
-  gen_server:call(Server, {stmt_info, StmtId}, infinity).
+stmt_info(Pid, StmtId) ->
+  gen_server:call(Pid, {stmt_info, StmtId}, infinity).
 
-quote(Server, Value) ->
-  gen_server:call(Server, {quote, Value}, infinity).
+%% @spec quote(pid(), term()) -> binary() | {error, term()}
+%% @doc Escape and quote a value for safe concatenation into an SQL statement.
+quote(Pid, Value) ->
+  gen_server:call(Pid, {quote, Value}, infinity).
 
-supports(Server) ->
-  gen_server:call(Server, supports, infinity).
+supports(Pid) ->
+  gen_server:call(Pid, supports, infinity).
 
-%% ------------------------------------------------------------------
-%% gen_server Function Definitions
-%% ------------------------------------------------------------------
-
+%% @private
 init({Address, Port, User, Options}) ->
   {ok, Socket} = gen_tcp:connect(Address, Port, [{active, false}, binary]),
   {ok, SocketServ} = ex_mysql_tcp:start_link(Socket),
   do_handshake(SocketServ, User, connect_opts(Options)).
 
+%% @private
 handle_call({use, Database}, _From, State) ->
   case do_use(Database, State) of
     Error = {error, _Reason} -> {reply, Error, State};
@@ -140,23 +172,22 @@ handle_call(supports, _From, State = #state{supports = Caps}) ->
 handle_call(Request, _From, State) ->
   {reply, {error, {badreq, Request}}, State}.
 
+%% @private
 handle_cast(_Msg, State) ->
   {noreply, State}.
 
+%% @private
 handle_info(_Event, State) ->
   {noreply, State}.
 
+%% @private
 terminate(_Reason, _State) ->
   ok.
 
+%% @private
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-%% ------------------------------------------------------------------
-%% Internal Function Definitions
-%% ------------------------------------------------------------------
-
--record(connect_opts, {passwd = <<>>, db}).
 
 connect_opts(Args) ->
   lists:foldl(fun ({password, Password}, Opts) ->
