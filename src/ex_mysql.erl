@@ -1,10 +1,15 @@
-%%% @type str() = iodata() | atom().
 %%% @type address() = string() | atom() | ip_address().
 %%% @type option() = {password, str()} | {database, str()}.
+%%% @type str() = iodata() | atom().
 %%% @type capability() = found_rows | long_flag | connect_with_db | no_schema
 %%%                    | compress | local_files | ignore_space | protocol_v41
 %%%                    | interactive | ssl | transactions | secure_connection.
 %%% @type stmt_id() = integer().
+%%% @type row_value() = binary() | string() | integer() | float() | datetime()
+%%%                   | date() | time().
+%%% @type datetime() = {date(), time()}.
+%%% @type date() = {Year::integer(), Month::integer(), Day::integer()}.
+%%% @type time() = {Hour::integer(), Minute::integer(), Second::integer()}.
 
 -module(ex_mysql).
 -behaviour(gen_server).

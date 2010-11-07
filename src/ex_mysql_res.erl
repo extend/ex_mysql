@@ -24,7 +24,7 @@
 fields(Pid) ->
   gen_fsm:sync_send_event(Pid, fields, infinity).
 
-%% @spec fetch(pid()) -> [row_value()] | false
+%% @spec fetch(pid()) -> [ex_mysql:row_value()] | false
 %% @doc Return the next row of the result set or false.
 fetch(Pid) ->
   gen_fsm:sync_send_event(Pid, fetch, infinity).

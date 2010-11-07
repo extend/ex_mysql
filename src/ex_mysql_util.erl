@@ -102,7 +102,7 @@ read_field(Bytes) ->
            Flavor -> Flavor end,
   #ex_mysql_field{table = Table, name = Name, type = Type, length = Length}.
 
-%% @spec read_row(binary(), [#ex_mysql_field{}]) -> [row_value()]
+%% @spec read_row(binary(), [#ex_mysql_field{}]) -> [ex_mysql:row_value()]
 %% @doc Read a given row packet with a given list of fields.
 read_row(Row, Fields) ->
   read_row(Row, Fields, []).
