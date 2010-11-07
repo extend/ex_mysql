@@ -6,10 +6,24 @@
 %%%                    | interactive | ssl | transactions | secure_connection.
 %%% @type stmt_id() = integer().
 %%% @type row_value() = binary() | string() | integer() | float() | datetime()
-%%%                   | date() | time().
+%%%                   | date() | time() | decimal() | set() | geometry()
+%%%                   | null.
 %%% @type datetime() = {date(), time()}.
 %%% @type date() = {Year::integer(), Month::integer(), Day::integer()}.
 %%% @type time() = {Hour::integer(), Minute::integer(), Second::integer()}.
+%%% @type decimal() = {integer(), integer()}.
+%%% @type set() = [string()].
+%%% @type geometry() = {geometry, integer(), geometry_value()}.
+%%% @type geometry_value() = point() | line_string() | polygon()
+%%%                        | multi_point() | multi_line_string()
+%%%                        | multi_polygon() | collection().
+%%% @type point() = {point, {float(), float()}}.
+%%% @type line_string() = {line_string, [point()]}.
+%%% @type polygon() = {polygon, [{linear_ring, [point()]}]}.
+%%% @type multi_point() = {multi_point, [point()]}.
+%%% @type multi_line_string() = {multi_line_string, [line_string()]}.
+%%% @type multi_polygon() = {multi_polygon, [polygon()]}.
+%%% @type collection() = {collection, [geometry_value()]}.
 
 -module(ex_mysql).
 -behaviour(gen_server).
