@@ -178,7 +178,7 @@ handle_call({stmt_info, StmtId}, _From, State = #state{table = Table}) ->
 handle_call({quote, Value}, _From, State = #state{escape = EscapeMode}) ->
   {reply, ex_mysql_util:quote(Value, EscapeMode), State};
 handle_call(supports, _From, State = #state{supports = Caps}) ->
-  {reply, ex_mysql_util:caps_list(Caps), State};
+  {reply, ex_mysql_util:caps_flags(Caps), State};
 handle_call(Request, _From, State) ->
   {reply, {error, {badreq, Request}}, State}.
 
