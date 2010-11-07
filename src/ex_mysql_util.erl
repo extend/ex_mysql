@@ -36,7 +36,7 @@ read_init(<<10/little, Rest/binary>>) ->
     _Lang:8/little, Status:16/little, 0:104, _Rest/binary>> = Rest2,
   {Caps, Status, ScrambleBegin}.
 
-%% @spec scramble(Password::binary(), Message::binary(), IsSecure::bool()) -> binary()
+%% @spec scramble(Password::binary(), Message::binary(), IsSecure::boolean()) -> binary()
 %% @doc Scramble a given password with a given message.
 scramble(Password = <<>>, _Message, _Secure) ->
   Password;
