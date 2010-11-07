@@ -3,46 +3,53 @@
 
 -record(state, {conn, fields, count = 0, rows = queue:new()}).
 
-%% ------------------------------------------------------------------
-%% API Function Exports
-%% ------------------------------------------------------------------
+-export([fields/1,
+         fetch/1,
+         count/1,
+         close/1]).
 
--export([fields/1, fetch/1, count/1, close/1]).
+-export([init/1,
+         handle_event/3,
+         handle_sync_event/4,
+         handle_info/3,
+         terminate/3,
+         code_change/4]).
 
-%% ------------------------------------------------------------------
-%% gen_fsm Function Exports
-%% ------------------------------------------------------------------
+-export([wait_fields/3,
+         wait_row/3,
+         finished/3]).
 
--export([init/1, handle_event/3, handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
--export([wait_fields/3, wait_row/3, finished/3]).
+%% @spec fields(pid()) -> [#ex_mysql_field{}]
+%% @doc Return the fields of the result set.
+fields(Pid) ->
+  gen_fsm:sync_send_event(Pid, fields, infinity).
 
-%% ------------------------------------------------------------------
-%% API Function Definitions
-%% ------------------------------------------------------------------
+%% @spec fetch(pid()) -> [row_value()] | false
+%% @doc Return the next row of the result set or false.
+fetch(Pid) ->
+  gen_fsm:sync_send_event(Pid, fetch, infinity).
 
-fields(Server) ->
-  gen_fsm:sync_send_event(Server, fields, infinity).
+%% @spec count(pid()) -> integer()
+%% @doc Return the number of rows in the result set.
+count(Pid) ->
+  gen_fsm:sync_send_event(Pid, count, infinity).
 
-fetch(Server) ->
-  gen_fsm:sync_send_event(Server, fetch, infinity).
+%% @spec close(pid()) -> ok
+%% @doc Close the result set.
+close(Pid) ->
+  gen_fsm:send_all_state_event(Pid, close).
 
-count(Server) ->
-  gen_fsm:sync_send_event(Server, count, infinity).
 
-close(Server) ->
-  gen_fsm:send_all_state_event(Server, close).
-
-%% ------------------------------------------------------------------
-%% gen_fsm Function Definitions
-%% ------------------------------------------------------------------
-
+%% @private
 init(Conn) ->
   {ok, wait_fields, #state{conn = Conn}}.
 
+%% @private
 wait_fields(Event, From, State) ->
   Fields = recv_fields(),
   wait_row(Event, From, State#state{fields = Fields}).
 
+%% @private
 wait_row(fetch, _From, State = #state{conn = Conn, count = Count, rows = Q}) ->
   case queue:out(Q) of
     {{value, Row}, NewQ} -> {reply, Row, wait_row, State#state{rows = NewQ}};
@@ -58,6 +65,7 @@ wait_row(Event, From, State) ->
   NewState = recv_rows(State),
   finished(Event, From, NewState).
 
+%% @private
 finished(fetch, _From, State = #state{rows = [Row | Rows]}) ->
   {reply, Row, finished, State#state{rows = Rows}};
 finished(fetch, _From, State = #state{rows = []}) ->
@@ -69,14 +77,17 @@ finished(fields, _From, State = #state{fields = Fields}) ->
 finished(Event, _From, State) ->
   {reply, {error, {badevent, Event}}, finished, State}.
 
+%% @private
 handle_event(close, _StateName, State) ->
   {stop, normal, State};
 handle_event(_Event, StateName, State) ->
   {next_state, StateName, State}.
 
+%% @private
 handle_sync_event(Event, _From, StateName, State) ->
   {reply, {error, {badevent, Event}}, StateName, State}.
 
+%% @private
 handle_info({fields, Fields}, wait_fields, State) ->
   {next_state, wait_row, State#state{fields = Fields}};
 handle_info({row, false}, wait_row, State = #state{conn = Conn, rows = Q}) ->
@@ -87,15 +98,14 @@ handle_info({row, Row}, wait_row, State) ->
 handle_info(_Msg, StateName, State) ->
   {next_state, StateName, State}.
 
+%% @private
 terminate(_Reason, _StateName, _State) ->
   ok.
 
+%% @private
 code_change(_OldVsn, StateName, State, _Extra) ->
   {ok, StateName, State}.
 
-%% ------------------------------------------------------------------
-%% Internal Function Definitions
-%% ------------------------------------------------------------------
 
 recv_fields() ->
   receive {fields, Fields} -> Fields end.
