@@ -1,9 +1,9 @@
+%%% @type context() = {integer(), integer()}.
+
 -module(ex_mysql_rnd).
 
 -export([new/2,
          next/1, next/2]).
-
-%%% @type context() = {integer(), integer()}.
 
 %% @spec new(integer(), integer()) -> context()
 %% @doc Return a new pseudo-random number generator context.

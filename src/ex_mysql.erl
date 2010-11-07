@@ -1,3 +1,11 @@
+%%% @type str() = iodata() | atom().
+%%% @type address() = string() | atom() | ip_address().
+%%% @type option() = {password, str()} | {database, str()}.
+%%% @type capability() = found_rows | long_flag | connect_with_db | no_schema
+%%%                    | compress | local_files | ignore_space | protocol_v41
+%%%                    | interactive | ssl | transactions | secure_connection.
+%%% @type stmt_id() = integer().
+
 -module(ex_mysql).
 -behaviour(gen_server).
 -include("ex_mysql.hrl").
@@ -26,14 +34,6 @@
 
 -record(connect_opts, {passwd = <<>>, db}).
 -record(state, {socket, escape, supports, table}).
-
-%%% @type str() = iodata() | atom().
-%%% @type address() = string() | atom() | ip_address().
-%%% @type option() = {password, str()} | {database, str()}.
-%%% @type capability() = found_rows | long_flag | connect_with_db | no_schema
-%%%                    | compress | local_files | ignore_space | protocol_v41
-%%%                    | interactive | ssl | transactions | secure_connection.
-%%% @type stmt_id() = integer().
 
 %% @equiv start(User, [])
 start(User) ->

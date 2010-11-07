@@ -1,4 +1,5 @@
 %%% @private
+
 -module(ex_mysql_tcp).
 -behaviour(gen_server).
 
